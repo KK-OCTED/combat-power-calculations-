@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>戰事戰力計算器</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark;--bg:#000;--card:#111;--line:#333;--tx:#eee;--mut:#999;--a:#e5484d;--b:#3b82f6;--gold:#f5c542}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:#000;color:var(--tx);font:15px/1.5 -apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;padding:12px}
+h1{font-size:20px;margin:4px 0 10px;text-align:center;letter-spacing:2px}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{flex:1;padding:12px 0;font-size:17px;background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:10px}
+.tabs button.on{background:var(--gold);color:#000;border-color:var(--gold);font-weight:700}
+.grid{display:grid;gap:12px;grid-template-columns:1fr}
+.grid{max-width:520px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.card h2{margin:0 0 8px;font-size:17px}
+.card.A h2{color:var(--a)}.card.B h2{color:var(--b)}
+label{display:block;margin:10px 0 3px;font-size:13px;color:var(--mut)}
+input,select{width:100%;padding:10px;background:#000;color:var(--tx);border:1px solid var(--line);border-radius:8px;font-size:15px}
+.hint{font-size:12px;color:var(--mut)}
+.rl{display:flex;gap:10px;margin:6px 0 4px}.rl button{flex:1;padding:12px 0;font-size:16px;font-weight:700;background:#000;color:var(--mut);border:2px solid var(--line);border-radius:10px}.rl button.on{background:var(--gold);color:#000;border-color:var(--gold)}
+.res{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)}
+.pw{font-size:26px;font-weight:700;color:var(--gold)}
+.bd{font-size:12px;color:var(--mut);word-break:break-all}
+.win{margin:14px 0;text-align:center}
+.bar{display:flex;height:26px;border-radius:13px;overflow:hidden;background:#222;margin-top:6px}
+.bar div{display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;min-width:0;transition:width .3s}
+.adm{margin-top:16px;border:1px solid var(--gold);border-radius:12px;padding:12px}
+.adm h3{margin:0 0 6px;color:var(--gold);font-size:16px}
+.f{border-top:1px solid var(--line);padding:8px 0}
+.o{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.o span{flex:1;font-size:14px}.o input{width:64px;padding:6px;min-width:0}
+.btn{padding:10px 14px;border-radius:8px;border:1px solid var(--gold);background:none;color:var(--gold);font-size:14px;margin:4px 6px 0 0}
+#st{font-size:12px;color:var(--mut);text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<h1>⚔ 戰事戰力計算器</h1>
+<div class="tabs" id="tabs"></div>
+<div class="grid" id="sides"></div>
+<div id="st"></div>
+<script>
+// ==========================================================
+// 【數值設定區】要改數值，只改這一段。
+// 每個選項格式：['選項名稱', 攻方數值, 守方數值]
+//   - 只寫兩個（['平原',1]）＝攻守相同
+//   - op:'x' 代表乘，op:'+' 代表加
+//   - t:'num' 是玩家自己輸入的數字，t:'sel' 是下拉選單
+//   - 只留一個選項的選單，會自動套用，不顯示下拉
+// 要新增選項：複製一個 ['名稱',攻,守], 貼在同一個 o:U([ ... ]) 裡，注意逗號
+// 要刪除選項：整個 ['名稱',攻,守], 刪掉即可
+// ==========================================================
+const U=(a)=>a.map(([n,v,d])=>d==null?{n,v}:{n,v,d});
+const DEF={
+ground:{name:'🪖 陸',fields:[
+{k:'n',n:'人數（1,000人以上單位）',t:'num',def:10000,min:0,step:1000},
+{k:'m',n:'機械化程度（0.01–1）',t:'num',def:0.5,min:0.01,max:1,step:0.01},
+{k:'s',n:'補給（鐵路站15km內/外）',t:'sel',op:'x',o:U([['鐵路站15km內',1],['超出15km',0.5]])},
+{k:'t',n:'地形',t:'sel',op:'x',o:U([['平原',1,1],['台地',1,1],['高原',0.85,1.10],['沼澤',0.70,1.15],['森林',0.75,1.20],['丘陵',0.85,1.15],['高山',0.60,1.40]])},
+{k:'c',n:'戰爭類別',t:'sel',op:'x',o:U([['遭遇戰',1,1],['塹壕戰',0.6,1.8],['要塞戰',0.4,2.0],['登陸戰',0.25,2.5]])},
+{k:'a',n:'空優（覆蓋95%且全面勝利）',t:'sel',op:'x',o:U([['無',1],['具備空優',1.15]])},
+{k:'f',n:'岸防炮支援（僅灘頭堡期，守方）',t:'sel',op:'x',o:U([['無',1,1],['小',1,1.05],['中',1,1.10],['大',1,1.15],['上限',1,1.20]])},
+{k:'g',n:'海軍艦炮支援（海岸20km內+制海權）',t:'sel',op:'x',o:U([['無',1],['小',1.05],['中',1.10],['大',1.15],['上限',1.20]])}
+]},
+air:{name:'✈ 空',fields:[
+{k:'n',n:'可用飛機數量',t:'num',def:50,min:0,step:1},
+{k:'r',n:'出勤率（0.60–0.90）',t:'num',def:0.75,min:0.6,max:0.9,step:0.01},
+{k:'p',n:'飛行員係數（0.1起，上限1.1）',t:'num',def:0.1,min:0.1,max:1.1,step:0.01},
+{k:'e',n:'裝備分數（0–100，自動換算係數）',t:'equip',def:100,min:0,max:100,step:1},
+{k:'s',n:'態勢（客場=攻方／主場=守方）',t:'sel',op:'x',o:U([['依攻守自動套用',0.8,1.2]])},
+{k:'c',n:'戰鬥類別',t:'sel',op:'x',o:U([['制空權爭奪',1,1],['戰略轟炸與護航（轟炸方/攔截方）',0.8,1.3],['戰略轟炸－護航達50%',1.0,1.3],['對地／艦攻擊',1.0,1.2]])},
+{k:'d',n:'地面／海面防空火力（僅守方）',t:'sel',op:'x',o:U([['無',1,1],['稀疏',1,1.05],['中等',1,1.10],['密集',1,1.15],['攔截方防空密集（轟炸攔截額外）',1,1.1]])}
+]},
+sea:{name:'⚓ 海',fields:[
+{k:'n',n:'艦艇戰力總和',t:'num',def:100,min:0,step:1},
+{k:'s',n:'補給（距基地）',t:'sel',op:'x',o:U([['500海里內',1],['超過500海里',0.5]])},
+{k:'t',n:'態勢（客場=攻方／主場=守方）',t:'sel',op:'x',o:U([['小',0.9,1.1],['中',0.85,1.15],['大',0.8,1.2]])},
+{k:'c',n:'戰鬥類別',t:'sel',op:'x',o:U([['制海權爭奪',1,1],['護航與破交',1.0,1.2],['護航與破交－護航方具航母或岸基航空',1.0,1.32],['登陸支援與岸轟',1.1,1.3],['登陸支援與岸轟－支援方具制空權／岸防方具岸炮＋水雷',1.35,1.5]])},
+{k:'a',n:'制空權',t:'sel',op:'x',o:U([['無',1],['小',1.15],['中',1.20],['大',1.25]])},
+{k:'f',n:'岸基炮台支援（20km內）',t:'sel',op:'x',o:U([['無',1],['小',1.05],['中',1.10],['大',1.15]])},
+{k:'u',n:'被敵方潛艦威脅（補給減益）',t:'sel',op:'x',o:U([['無',1],['輕',0.9],['重',0.8]])},
+{k:'m',n:'被敵方水雷／封鎖（態勢減益）',t:'sel',op:'x',o:U([['無',1],['輕',0.9],['重',0.8]])}
+]}};
+const VER=2;
+const clone=o=>JSON.parse(JSON.stringify(o));
+let CFG=clone(DEF),mode='ground',admin=false,db=null;
+const S={A:{role:'a'},B:{role:'d'}}; // 各側輸入值
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(v,op)=>(op==='+'?'+':'×')+v;
+function optLabel(f,o){
+  const hasD=o.d!=null&&o.d!==o.v;
+  return o.n+'　'+(hasD?`攻${fmt(o.v,f.op)}／守${fmt(o.d,f.op)}`:fmt(o.v,f.op));
+}
+function val(side,f){
+  const k=mode+f.k,s=S[side];
+  if(s[k]==null) s[k]=f.t==='sel'?0:f.def;
+  return s[k];
+}
+function calc(side){
+  let prod=1,add=0,parts=[];
+  for(const f of CFG[mode].fields){
+    const v=val(side,f);
+    if(f.t==='sel'){
+      const o=f.o[v]||f.o[0];
+      const x=(S[side].role==='d'&&o.d!=null)?o.d:o.v;
+      if(f.op==='+'){add+=x;parts.push(`+${x}`)}else{prod*=x;parts.push(`×${x}`)}
+    }else if(f.t==='equip'){
+      const x=0.2+(+v||0)/100*1.2;prod*=x;parts.push(`×${x.toFixed(2)}`);
+    }else{const x=+v||0;prod*=x;parts.push(`×${x}`)}
+  }
+  return{p:prod+add,txt:parts.join(' ').replace(/^×/,'')};
+}
+function sideHTML(side){
+  const f=CFG[mode].fields,s=S[side];
+  let h=`<label>攻守身分</label><div class="rl"><button data-s="${side}" data-r="a" class="${s.role==='a'?'on':''}">⚔ 攻方</button><button data-s="${side}" data-r="d" class="${s.role==='d'?'on':''}">🛡 守方</button></div>`;
+  for(const x of f){
+    h+=`<label>${esc(x.n)}</label>`;
+    const v=val(side,x);
+    if(x.t==='sel'&&x.o.length===1) h+=`<div class="hint">${esc(optLabel(x,x.o[0]))}（自動套用）</div>`;else if(x.t==='sel') h+=`<select data-s="${side}" data-k="${mode+x.k}">`+x.o.map((o,i)=>`<option value="${i}" ${i==v?'selected':''}>${esc(optLabel(x,o))}</option>`).join('')+`</select>`;
+    else h+=`<input type="number" inputmode="decimal" data-s="${side}" data-k="${mode+x.k}" value="${v}" min="${x.min??''}" max="${x.max??''}" step="${x.step||1}">`+(x.t==='equip'?`<div class="hint">換算：裝備係數＝0.2＋分數÷100×1.2</div>`:'');
+  }
+  return`<div class="card ${side}">${h}<div class="res"><div class="pw" id="pw${side}"></div><div class="bd" id="bd${side}"></div></div></div>`;
+}
+function result(){
+  const a=calc('A');
+  for(const [k,r] of [['A',a]]){$('pw'+k).textContent='戰力 '+(+r.p.toFixed(3)).toLocaleString();$('bd'+k).textContent=r.txt}
+}
+function renderSides(){$('sides').innerHTML=sideHTML('A');result()}
+function renderTabs(){
+  $('tabs').innerHTML=Object.keys(CFG).map(k=>`<button class="${k===mode?'on':''}" data-m="${k}">${CFG[k].name}</button>`).join('');
+}
+document.addEventListener('click',e=>{const t=e.target;
+  if(t.dataset.m){mode=t.dataset.m;renderTabs();renderSides()}
+  if(t.dataset.r){const o=t.dataset.s==='A'?'B':'A';S[t.dataset.s].role=t.dataset.r;S[o].role=t.dataset.r==='a'?'d':'a';renderSides()}
+});
+document.addEventListener('input',e=>{const t=e.target;if(t.dataset.s&&t.type==='number'){S[t.dataset.s][t.dataset.k]=t.value===''?0:+t.value;result()}});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.s&&t.tagName==='SELECT'){S[t.dataset.s][t.dataset.k]=+t.value;result()}});
+renderTabs();renderSides();
+</script>
+</body>
+</html>
